@@ -3,225 +3,59 @@ Name
 
 lua-resty-jwt - [JWT](http://self-issued.info/docs/draft-jones-json-web-token-01.html) for ngx_lua and LuaJIT
 
-version
+Acknowledgement
 =======
+This work is based on [lua-resty-jwt](https://github.com/SkyLothar/lua-resty-jwt) plugins so all ... should go those guys.
+The intention of this repo is to provide an "out of the box" solution for authenticating against keys stored in Redis cache.
 
-0.1.2
-
-
-Table of Contents
-=================
-
-* [Name](#name)
-* [Status](#status)
-* [Description](#description)
-* [Synopsis](#synopsis)
-* [Methods](#methods)
-    * [sign](#sign)
-    * [verify](#verify)
-    * [load and verify](#load--verify)
-    * [sign JWE](#sign-jwe)
-* [Example](#examples)
-* [Installation](#installation)
-* [Testing With Docker](#testing-with-docker)
-* [Authors](AUTHORS.md)
-* [See Also](#see-also)
-
-Status
-======
-
-This library is still under active development and is considered production ready.
+Version
+=======
+0.1
 
 Description
 ===========
 
-This library requires an nginx build with OpenSSL,
-the [ngx_lua module](http://wiki.nginx.org/HttpLuaModule),
-the [LuaJIT 2.0](http://luajit.org/luajit.html),
-the [lua-resty-hmac](https://github.com/jkeys089/lua-resty-hmac),
-and the [lua-resty-string](https://github.com/openresty/lua-resty-string),
+The intention of this repo is to provide an "out of the box" solution for authenticating against keys stored in Redis cache.
+To run it in a docker dontainer:
 
+```
+docker run --name redis redis
 
-Synopsis
-========
-
-```lua
-    # nginx.conf:
-
-    lua_package_path "/path/to/lua-resty-jwt/lib/?.lua;;";
-
-    server {
-        default_type text/plain;
-        location = /verify {
-            content_by_lua '
-                local cjson = require "cjson"
-                local jwt = require "resty.jwt"
-
-                local jwt_token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9" ..
-                    ".eyJmb28iOiJiYXIifQ" ..
-                    ".VAoRL1IU0nOguxURF2ZcKR0SGKE1gCbqwyh8u2MLAyY"
-                local jwt_obj = jwt:verify("lua-resty-jwt", jwt_token)
-                ngx.say(cjson.encode(jwt_obj))
-            ';
-        }
-        location = /sign {
-            content_by_lua '
-                local cjson = require "cjson"
-                local jwt = require "resty.jwt"
-
-                local jwt_token = jwt:sign(
-                    "lua-resty-jwt",
-                    {
-                        header={typ="JWT", alg="HS256"},
-                        payload={foo="bar"}
-                    }
-                )
-                ngx.say(jwt_token)
-            ';
-        }
-    }
+docker run --link redis -v nginx.conf:/usr/nginx/conf/nginx.conf svyatogor/resty-lua-jwt
 ```
 
-[Back to TOC](#table-of-contents)
+Sample nginx.conf (minimal config with only relevant sections)
 
-Methods
-=======
-
-To load this library,
-
-1. you need to specify this library's path in ngx_lua's [lua_package_path](https://github.com/openresty/lua-nginx-module#lua_package_path) directive. For example, `lua_package_path "/path/to/lua-resty-jwt/lib/?.lua;;";`.
-2. you use `require` to load the library into a local Lua variable:
-
-```lua
-    local jwt = require "resty.jwt"
 ```
+worker_processes  1;
+daemon off;
+error_log stderr;
 
-[Back to TOC](#table-of-contents)
+events {
+	worker_connections  1024;
+}
 
+http {
+	include       mime.types;
+	default_type  application/octet-stream;
+	access_log  /dev/stdout;
 
-sign
-----
+	sendfile        on;
+	keepalive_timeout  65;
 
-`syntax: local jwt_token = jwt:sign(key, table_of_jwt)`
+	lua_package_path "/lua-resty-jwt/lib/?.lua;;";
+	lua_shared_dict jwt_key_dict 10m;
+	resolver 127.0.0.1;
 
-sign a table_of_jwt to a jwt_token.
-
-The `alg` argument specifies which hashing algorithm to use (`HS256`, `HS512`, `RS256`).
-
-### sample of table_of_jwt ###
-```
-{
-    "header": {"typ": "JWT", "alg": "HS512"},
-    "payload": {"foo": "bar"}
+	server {
+		listen       80;
+		server_name  localhost;
+		set $redhost "redis";
+		set $redport 6379;
+		location ~ ^/api/(.*)$ {
+			access_by_lua_file /lua-resty-jwt/jwt.lua;
+			proxy_pass http://upstream/api/$1;
+		}
+	}
 }
 ```
-
-verify
-------
-`syntax: local jwt_obj = jwt:verify(key, jwt_token, [, leeway])`
-
-verify a jwt_token and returns a jwt_obj table
-
-
-load & verify
-----------------------------------------
-```
-syntax: local jwt_obj = jwt:load_jwt(jwt_token)
-syntax: local verified = jwt:verify_jwt_obj(key, jwt_obj, [, leeway])
-```
-
-
-__verify = load_jwt +  verify_jwt_obj__
-
-load jwt, check for kid, then verify it with the correct key
-
-
-### sample of jwt_obj ###
-```
-{
-    "raw_header": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9",
-    "raw_payload: "eyJmb28iOiJiYXIifQ",
-    "signature": "wrong-signature",
-    "header": {"typ": "JWT", "alg": "HS256"},
-    "payload": {"foo": "bar"},
-    "verified": false,
-    "valid": true,
-    "reason": "signature mismatche: wrong-signature"
-}
-```
-
-sign-jwe
-----
-
-`syntax: local jwt_token = jwt:sign(key, table_of_jwt)`
-
-sign a table_of_jwt to a jwt_token.
-
-The `alg` argument specifies which hashing algorithm to use for encrypting key (`DIR`).
-The `enc` argument specifies which hashing algorithm to use for encrypting payload (`A128CBC_HS256`, `A256CBC_HS512`)
-
-### sample of table_of_jwt ###
-```
-{
-    "header": {"typ": "JWE", "alg": "DIR", "enc":"A128CBC_HS256"},
-    "payload": {"foo": "bar"}
-}
-```
-
-verify
-------
-`syntax: local jwt_obj = jwt:verify(key, jwt_token, [, leeway])`
-
-verify a jwt_token and returns a jwt_obj table
-[Back to TOC](#table-of-contents)
-
-Examples
-========
-* [JWT Auth With Query and Cookie](examples/README.md#jwt-auth-using-query-and-cookie)
-* [JWT Auth With KID and Store Your Key in Redis](examples/README.md#jwt-auth-with-kid-and-store-keys-in-redis)
-
-[Back to TOC](#table-of-contents)
-
-
-Installation
-============
-
-It is recommended to use the latest [ngx_openresty bundle](http://openresty.org) directly.
-
-Also, You need to configure
-the [lua_package_path](https://github.com/openresty/lua-nginx-module#lua_package_path) directive to
-add the path of your lua-resty-jwt source tree to ngx_lua's Lua module search path, as in
-
-```nginx
-    # nginx.conf
-    http {
-        lua_package_path "/path/to/lua-resty-jwt/lib/?.lua;;";
-        ...
-    }
-```
-
-and then load the library in Lua:
-
-```lua
-    local jwt = require "resty.jwt"
-```
-
-
-[Back to TOC](#table-of-contents)
-
-Testing With Docker
-===================
-
-```
-docker build -t lua-resty-jwt .
-docker run --rm -it -v `pwd`:/lua-resty-jwt lua-resty-jwt make test
-```
-
-[Back to TOC](#table-of-contents)
-
-
-See Also
-========
-* the ngx_lua module: http://wiki.nginx.org/HttpLuaModule
-
-[Back to TOC](#table-of-contents)

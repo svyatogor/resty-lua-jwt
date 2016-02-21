@@ -31,7 +31,5 @@ RUN apt-get -y install dnsmasq && update-rc.d dnsmasq enable
 RUN echo 'user=root' > /etc/dnsmasq.conf
 COPY ./lib /lua-resty-jwt/lib
 COPY ./jwt.lua /lua-resty-jwt/jwt.lua
-# COPY cors.conf /usr/nginx/conf/cors.conf
-# COPY nginx.conf /usr/nginx/conf/nginx.conf
 CMD /etc/init.d/dnsmasq start && nginx
 EXPOSE 80

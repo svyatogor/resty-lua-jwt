@@ -1,12 +1,8 @@
-Name
-====
-
-lua-resty-jwt - [JWT](http://self-issued.info/docs/draft-jones-json-web-token-01.html) for ngx_lua and LuaJIT
-
 Acknowledgement
 =======
 This work is based on [lua-resty-jwt](https://github.com/SkyLothar/lua-resty-jwt) plugins so all ... should go those guys.
 The intention of this repo is to provide an "out of the box" solution for authenticating against keys stored in Redis cache.
+If you need a more versatile solution you should really turn look at the upstream project.
 
 Version
 =======
@@ -16,7 +12,7 @@ Description
 ===========
 
 The intention of this repo is to provide an "out of the box" solution for authenticating against keys stored in Redis cache.
-To run it in a docker dontainer:
+To run it in a docker container:
 
 ```
 docker run --name redis redis
@@ -38,7 +34,7 @@ events {
 http {
 	include       mime.types;
 	default_type  application/octet-stream;
-	access_log  /dev/stdout;
+	access_log    /dev/stdout;
 
 	sendfile        on;
 	keepalive_timeout  65;
@@ -59,3 +55,25 @@ http {
 	}
 }
 ```
+
+Integration with authentication API
+=======
+The token should be passed in "Authorization" header as:
+```
+Authorization: Bearer TOKEN
+```
+
+It must contain the payload hash of format
+
+```
+{kid: SESSION_ID}
+```
+
+During authorization process your API should set the following keys in redis:
+
+```
+HSET SESSION_ID secret SESSION_SECRET
+HSET SESSION_ID data OPTIONAL_DATA
+```
+
+If you set the data (which is not required) it will be passed to the upstream API in the X-Data header. A typical use case would be to serialize relevant user data (such as user id) in the JSON hash, so that upstream API is able to identify the user.

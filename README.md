@@ -1,6 +1,6 @@
 Acknowledgement
 =======
-This work is based on [lua-resty-jwt](https://github.com/SkyLothar/lua-resty-jwt) plugins so all ... should go those guys.
+This work is based on [lua-resty-jwt](https://github.com/SkyLothar/lua-resty-jwt) plugins so all credits.. should go those guys.
 The intention of this repo is to provide an "out of the box" solution for authenticating against keys stored in Redis cache.
 If you need a more versatile solution you should really turn look at the upstream project.
 

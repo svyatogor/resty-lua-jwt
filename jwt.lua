@@ -56,28 +56,28 @@ local auth_header = ngx.var.http_Authorization
 if auth_header == nil then
     ngx.status = ngx.HTTP_UNAUTHORIZED
     ngx.log(ngx.WARN, "No Authorization header")
-    ngx.exit(ngx.OK)
+    ngx.exit(ngx.HTTP_UNAUTHORIZED)
 end
 
 local _, _, token = string.find(auth_header, "Bearer%s+(.+)")
 if token == nil then
     ngx.status = ngx.HTTP_UNAUTHORIZED
     ngx.log(ngx.WARN, "Missing token")
-    ngx.exit(ngx.OK)
+    ngx.exit(ngx.HTTP_UNAUTHORIZED)
 end
 
 local jwt_obj = jwt:load_jwt('', token)
 if not jwt_obj.valid then
     ngx.status = ngx.HTTP_UNAUTHORIZED
     ngx.say("{error: 'invalid token (101)'}")
-    ngx.exit(ngx.OK)
+    ngx.exit(ngx.HTTP_UNAUTHORIZED)
 end
 
 local kid = jwt_obj.payload['kid']
 if kid == nil then
     ngx.status = ngx.HTTP_UNAUTHORIZED
     ngx.say("{error: 'invalid token (102)'}")
-    ngx.exit(ngx.OK)
+    ngx.exit(ngx.HTTP_UNAUTHORIZED)
 end
 
 local jwt_key_dict = ngx.shared.jwt_key_dict
@@ -92,12 +92,12 @@ if secret == ngx.null then
     -- no such key
     ngx.status = ngx.HTTP_UNAUTHORIZED
     ngx.say("{error: 'invalid or expired token'}")
-    ngx.exit(ngx.OK)
+    ngx.exit(ngx.HTTP_UNAUTHORIZED)
 elseif secret == nil then
     -- get key error
     ngx.status = ngx.HTTP_INTERNAL_SERVER_ERROR
     ngx.say("{error: 'internal error'}")
-    ngx.exit(ngx.OK)
+    ngx.exit(ngx.ERROR)
 else
     local verified = jwt:verify_jwt_obj(secret, jwt_obj, 30)
 
@@ -105,12 +105,13 @@ else
         jwt_key_dict:set(kid, secret)
         local data = redkey(kid, 'data')
         if data == ngx.null then
+            ngx.req.set_header('X-Data', '')
         else
           ngx.req.set_header('X-Data', data)
         end
     else
         ngx.status = ngx.HTTP_UNAUTHORIZED
         ngx.say("{error: '"..jwt_obj.reason.."'}")
-        ngx.exit(ngx.OK)
+        ngx.exit(ngx.HTTP_UNAUTHORIZED)
     end
 end

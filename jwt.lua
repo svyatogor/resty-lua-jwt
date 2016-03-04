@@ -54,9 +54,7 @@ local jwt = require "resty.jwt"
 
 local auth_header = ngx.var.http_Authorization
 if auth_header == nil then
-    ngx.status = ngx.HTTP_UNAUTHORIZED
-    ngx.log(ngx.WARN, "No Authorization header")
-    ngx.exit(ngx.HTTP_UNAUTHORIZED)
+    ngx.exit(ngx.OK)
 end
 
 local _, _, token = string.find(auth_header, "Bearer%s+(.+)")
@@ -73,45 +71,36 @@ if not jwt_obj.valid then
     ngx.exit(ngx.HTTP_UNAUTHORIZED)
 end
 
-local kid = jwt_obj.payload['kid']
-if kid == nil then
+local iss = jwt_obj.payload['iss']
+if iss == nil then
     ngx.status = ngx.HTTP_UNAUTHORIZED
     ngx.say("{error: 'invalid token (102)'}")
     ngx.exit(ngx.HTTP_UNAUTHORIZED)
 end
 
-local jwt_key_dict = ngx.shared.jwt_key_dict
-local secret = jwt_key_dict:get(kid)
-if secret == nil then
-    -- key not found in cache, let's check if it's in redis
-    -- new key found, if the new key is valid, older ones should be deleted
-    secret = redkey(kid, 'secret')
+local jwt_dict = ngx.shared.jwt
+local cert = jwt_dict:get('cert')
+
+if cert == nil then
+    local file = io.open('/lua-resty-jwt/cert.pem', 'r')
+    cert = file:read("*all")
+    file:close()
+    jwt_dict:set('cert', cert)
 end
 
-if secret == ngx.null then
-    -- no such key
-    ngx.status = ngx.HTTP_UNAUTHORIZED
-    ngx.say("{error: 'invalid or expired token'}")
-    ngx.exit(ngx.HTTP_UNAUTHORIZED)
-elseif secret == nil then
-    -- get key error
-    ngx.status = ngx.HTTP_INTERNAL_SERVER_ERROR
-    ngx.say("{error: 'internal error'}")
-    ngx.exit(ngx.ERROR)
-else
-    local verified = jwt:verify_jwt_obj(secret, jwt_obj, 30)
+local verified = jwt:verify_jwt_obj(cert, jwt_obj, 30)
 
-    if verified.verified then
-        jwt_key_dict:set(kid, secret)
-        local data = redkey(kid, 'data')
-        if data == ngx.null then
-            ngx.req.set_header('X-Data', '')
-        else
-          ngx.req.set_header('X-Data', data)
-        end
-    else
+if verified.verified then
+    local private_jwt = redkey('jwt', iss)
+    if private_jwt == ngx.null then
         ngx.status = ngx.HTTP_UNAUTHORIZED
-        ngx.say("{error: '"..jwt_obj.reason.."'}")
+        ngx.say("{error: 'session not found'}")
         ngx.exit(ngx.HTTP_UNAUTHORIZED)
+    else
+        ngx.req.set_header('Authorization', "Bearer "..private_jwt)
     end
+else
+    ngx.status = ngx.HTTP_UNAUTHORIZED
+    ngx.say("{error: '"..jwt_obj.reason.."'}")
+    ngx.exit(ngx.HTTP_UNAUTHORIZED)
 end

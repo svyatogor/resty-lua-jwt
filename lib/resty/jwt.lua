@@ -397,7 +397,7 @@ end
 
 --@function load jwt
 --@param jwt string token
-function _M.load_jwt(self, secret, jwt_str)  
+function _M.load_jwt(self, secret, jwt_str)
   local success, ret = pcall(parse, secret, jwt_str)
   if not success then
     return {
@@ -502,23 +502,9 @@ function _M.verify_jwt_obj(self, secret, jwt_obj, leeway)
   elseif alg == str_const.RS256 then
     local cert
     if self.trusted_certs_file ~= nil then
-      local err, x5c = jwt_obj[str_const.header][str_const.x5c]
-      if not x5c or not x5c[1] then
-        jwt_obj[str_const.reason] = "Unsupported RS256 key model"
-        return jwt_obj
-        -- TODO - Implement jwk and kid based models...
-      end
-
-      -- TODO Might want to add support for intermediaries that we
-      -- don't have in our trusted chain (items 2... if present)
-      local cert_str = ngx_decode_base64(x5c[1])
-      if not cert_str then
-        jwt_obj[str_const.reason] = "Malformed x5c header"
-        return jwt_obj
-      end
-      cert, err = evp.Cert:new(cert_str)
+      local cert, err = evp.Cert:new(secret)
       if not cert then
-        jwt_obj[str_const.reason] = "Unable to extract signing cert from JWT: " .. err
+        jwt_obj[str_const.reason] = "Unable to load certificate" .. err
         return jwt_obj
       end
       -- Try validating against trusted CA's, then a cert passed as secret
@@ -551,6 +537,7 @@ function _M.verify_jwt_obj(self, secret, jwt_obj, leeway)
 
     local message =string_format(str_const.regex_join_msg, raw_header ,  raw_payload)
     local sig = jwt_obj[str_const.signature]:gsub(str_const.dash, str_const.plus):gsub(str_const.underscore, str_const.slash)
+    
     local verified, err = verifier:verify(message, _M:jwt_decode(sig, false), evp.CONST.SHA256_DIGEST)
     if not verified then
       jwt_obj[str_const.reason] = err
